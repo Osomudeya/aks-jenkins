@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+    tools {
+        maven 'Maven3'
+    }
+    
+    environment {
+        registryName = 'aksjenkins'
+        registryCredential = 'aksjenkins'
+        registryUrl = 'aksjenkins.azurecr.io'
+        dockerImage = ''
+    } 
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: 'https://github.com/Osomudeya/aks-jenkins.git']]])
+
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh "mvn clean install"
+            }
+        }
+        
+        stage('Build Image') {
+            steps {
+                script {
+                    dockerImage = docker.build registryName
+                }
+            }
+        }
+        
+        stage('Upload Image to ACR') {
+            steps {   
+                script {
+                    docker.withRegistry("http://${registryUrl}", registryCredential) {
+                        dockerImage.push()
+                    }   
+                }
+            }
+        }
+        
+        stage ('K8S Deploy') {
+            steps {
+                script {
+                    withKubeConfig(caCertificate: '', clusterName: '', contextName: '', credentialsId: 'K8S', namespace: '', restrictKubeConfigAccess: false, serverUrl: '') {
+                        sh ('kubectl apply -f  jenkins-aks-deploy-from-acr.yaml')
+                    }
+                }
+            }
+        }
+    }
+}
